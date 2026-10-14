@@ -7,73 +7,80 @@ import torch
 from PIL import Image
 from torchvision.models import MobileNet_V3_Large_Weights, mobilenet_v3_large
 
-st.set_page_config(page_title="Image Classifier", page_icon="🔍", layout="centered")
+st.set_page_config(page_title="Image Classifier", page_icon="🔍", layout="wide")
 
 SAMPLES_DIR = Path(__file__).parent / "samples"
 TOP_K = 5
 
 CSS = """
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Manrope:wght@400;500;600&display=swap');
 
 :root {
-  --bg: #f6f7fb;
-  --card: #ffffff;
-  --ink: #14151a;
-  --muted: #6b7080;
-  --line: #e6e8ef;
-  --accent: #4f5bff;
-  --accent-soft: #eceeff;
+  --bg: #0a0f0d;
+  --card: #111815;
+  --border: rgba(255,255,255,0.07);
+  --text: #eef2ef;
+  --muted: #8a968f;
+  --accent: #3ee08f;
+  --accent-2: #2bc4c4;
 }
 
-html, body, .stApp, p, span, div, label, button, input {
-  font-family: 'Plus Jakarta Sans', sans-serif !important;
+.stApp {
+  background: radial-gradient(900px 500px at 50% -10%, rgba(62,224,143,0.12), transparent 70%), var(--bg);
+  color: var(--text);
 }
-.stApp { background: var(--bg); color: var(--ink); }
-[data-testid="stIconMaterial"] { font-family: 'Material Symbols Rounded' !important; }
-[data-testid="stButtonGroup"] button[aria-checked="true"] * { color: #fff !important; }
 header[data-testid="stHeader"], #MainMenu, footer, [data-testid="stToolbar"],
-[data-testid="stDecoration"] { display: none !important; }
-.block-container { max-width: 980px; padding: 3rem 1.5rem 3rem; }
+[data-testid="stDecoration"], [data-testid="stSidebar"] { display: none !important; }
+.block-container { max-width: 1060px; padding: 3rem 1.5rem 3rem; }
+.stApp, .stApp p, .stApp label, .stApp button { font-family: 'Manrope', sans-serif; }
 
-.title { font-size: clamp(2.2rem, 6vw, 3.2rem); font-weight: 800; letter-spacing: -0.03em;
-  line-height: 1.05; color: var(--ink); margin: 0; }
-.title span { color: var(--accent); }
-.subtitle { color: var(--muted); font-size: 1rem; margin: 0.6rem 0 1.2rem; }
-.tags { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 2.2rem; }
-.tag { background: var(--card); border: 1px solid var(--line); border-radius: 999px;
-  padding: 0.3rem 0.8rem; font-size: 0.8rem; color: var(--muted); font-weight: 500; }
+/* header */
+.top { text-align: center; margin-bottom: 2.2rem; }
+.badge { display: inline-block; padding: 0.35rem 0.9rem; border-radius: 999px; font-size: 0.78rem; font-weight: 600;
+  color: var(--accent); background: rgba(62,224,143,0.1); border: 1px solid rgba(62,224,143,0.25); }
+.title { font-family: 'Space Grotesk', sans-serif; font-weight: 700; font-size: clamp(2.4rem, 6vw, 3.6rem);
+  letter-spacing: -0.03em; line-height: 1.05; margin: 1rem 0 0.5rem; color: var(--text); }
+.title span { background: linear-gradient(90deg, var(--accent), var(--accent-2));
+  -webkit-background-clip: text; background-clip: text; color: transparent; }
+.sub { color: var(--muted); font-size: 1rem; }
 
-/* input pills */
-[data-testid="stButtonGroup"] button {
-  border-radius: 999px !important; border: 1px solid var(--line) !important; background: var(--card) !important;
-  color: var(--muted) !important; font-weight: 600 !important; padding: 0.45rem 1.1rem !important; margin-right: 0.4rem;
+/* cards */
+.st-key-input_card, .st-key-result_card {
+  background: var(--card); border: 1px solid var(--border); border-radius: 22px; padding: 1.4rem;
+  box-shadow: 0 20px 50px -30px rgba(0,0,0,0.8);
 }
-[data-testid="stButtonGroup"] button[aria-checked="true"] {
-  background: var(--accent) !important; color: #fff !important; border-color: var(--accent) !important;
-}
-[data-testid="stFileUploaderDropzone"] { background: var(--card); border: 2px dashed var(--line); border-radius: 18px; }
-[data-baseweb="select"] > div { border-radius: 12px !important; background: var(--card) !important; }
-[data-testid="stImage"] img { border-radius: 18px; }
+.card-title { font-family: 'Space Grotesk', sans-serif; font-weight: 600; font-size: 1.05rem; color: var(--text); margin-bottom: 0.2rem; }
 
-/* result card */
-.card { background: var(--card); border: 1px solid var(--line); border-radius: 22px; padding: 1.6rem;
-  box-shadow: 0 10px 30px rgba(20, 21, 26, 0.05); }
-.label { font-size: 0.75rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); }
-.pred { font-size: 2rem; font-weight: 800; letter-spacing: -0.02em; margin: 0.2rem 0 1rem; color: var(--ink); }
-.stats { display: grid; grid-template-columns: 1fr 1fr; gap: 0.7rem; margin-bottom: 1.4rem; }
-.stat { background: var(--accent-soft); border-radius: 14px; padding: 0.8rem 1rem; }
-.stat b { display: block; font-size: 1.4rem; font-weight: 800; color: var(--accent); }
-.stat small { color: var(--muted); font-size: 0.78rem; font-weight: 500; }
-.row { margin-top: 0.8rem; }
-.row-top { display: flex; justify-content: space-between; font-size: 0.9rem; margin-bottom: 0.3rem; }
-.row-top span:last-child { color: var(--muted); font-weight: 600; }
-.track { height: 8px; background: #f0f1f6; border-radius: 99px; overflow: hidden; }
-.fill { height: 100%; background: #c7cbff; border-radius: 99px; }
-.row.first .fill { background: var(--accent); }
-.empty { background: var(--card); border: 2px dashed var(--line); border-radius: 22px; padding: 4rem 1.5rem;
-  text-align: center; color: var(--muted); }
-.empty div { font-size: 2.2rem; margin-bottom: 0.4rem; }
+/* inputs */
+[data-testid="stButtonGroup"] button { border-radius: 12px !important; font-weight: 600 !important; }
+[data-testid="stFileUploaderDropzone"] { background: rgba(255,255,255,0.02); border: 1.5px dashed rgba(255,255,255,0.12);
+  border-radius: 16px; }
+[data-baseweb="select"] > div { border-radius: 12px !important; }
+[data-testid="stImage"] img { border-radius: 16px; }
+
+/* result */
+.result-head { display: flex; align-items: center; gap: 1.2rem; margin: 0.6rem 0 1.4rem; }
+.ring { --p: 0; flex: 0 0 96px; height: 96px; border-radius: 50%; display: grid; place-items: center;
+  background: conic-gradient(var(--accent) calc(var(--p) * 1%), rgba(255,255,255,0.07) 0); }
+.ring div { width: 78px; height: 78px; border-radius: 50%; background: var(--card); display: grid; place-items: center;
+  font-family: 'Space Grotesk', sans-serif; font-weight: 700; font-size: 1.25rem; color: var(--text); }
+.label-small { color: var(--muted); font-size: 0.82rem; font-weight: 500; }
+.label-big { font-family: 'Space Grotesk', sans-serif; font-weight: 700; font-size: 1.9rem; line-height: 1.1;
+  letter-spacing: -0.02em; color: var(--text); margin: 0.15rem 0 0.4rem; }
+.pill { display: inline-block; padding: 0.2rem 0.65rem; border-radius: 999px; font-size: 0.75rem; font-weight: 600;
+  color: var(--muted); background: rgba(255,255,255,0.05); }
+.bar { margin: 0.75rem 0; }
+.bar-top { display: flex; justify-content: space-between; font-size: 0.9rem; color: var(--text); margin-bottom: 0.35rem; }
+.bar-top b { font-weight: 600; color: var(--muted); }
+.bar-track { height: 8px; border-radius: 99px; background: rgba(255,255,255,0.06); overflow: hidden; }
+.bar-fill { height: 100%; border-radius: 99px; background: rgba(62,224,143,0.35); }
+.bar.first .bar-fill { background: linear-gradient(90deg, var(--accent), var(--accent-2)); }
+.bar.first .bar-top b { color: var(--accent); }
+.empty { text-align: center; padding: 4.5rem 1rem; color: var(--muted); }
+.empty .icon { font-size: 2.4rem; margin-bottom: 0.6rem; opacity: 0.7; }
+
+.foot { text-align: center; color: var(--muted); font-size: 0.82rem; margin-top: 2.2rem; }
 </style>
 """
 
@@ -98,44 +105,47 @@ def predict(image, top_k=TOP_K):
     return results, elapsed_ms
 
 
-def result_card(results, elapsed_ms):
+def result_html(results, elapsed_ms):
     name, conf = results[0]
-    rows = "".join(
-        f'<div class="row{" first" if i == 0 else ""}"><div class="row-top"><span>{html.escape(label)}</span>'
-        f'<span>{p:.1f}%</span></div><div class="track"><div class="fill" style="width:{p:.2f}%"></div></div></div>'
-        for i, (label, p) in enumerate(results)
-    )
-    return (
-        f'<div class="card"><div class="label">Prediction</div><div class="pred">{html.escape(name)}</div>'
-        f'<div class="stats"><div class="stat"><b>{conf:.1f}%</b><small>Confidence</small></div>'
-        f'<div class="stat"><b>{elapsed_ms:.0f} ms</b><small>Inference time</small></div></div>'
-        f'<div class="label">Top {len(results)}</div>{rows}</div>'
-    )
+    parts = [
+        '<div class="result-head">',
+        f'<div class="ring" style="--p:{conf:.1f}"><div>{conf:.0f}%</div></div>',
+        f'<div><div class="label-small">Prediction</div><div class="label-big">{html.escape(name)}</div>'
+        f'<span class="pill">⚡ {elapsed_ms:.0f} ms</span></div>',
+        "</div>",
+    ]
+    for rank, (label, p) in enumerate(results):
+        cls = "bar first" if rank == 0 else "bar"
+        parts.append(
+            f'<div class="{cls}"><div class="bar-top"><span>{html.escape(label)}</span><b>{p:.1f}%</b></div>'
+            f'<div class="bar-track"><div class="bar-fill" style="width:{p:.2f}%"></div></div></div>'
+        )
+    return "".join(parts)
 
 
 st.markdown(CSS, unsafe_allow_html=True)
 
 st.markdown(
+    '<div class="top"><span class="badge">CNN · MobileNetV3</span>'
     '<div class="title">Image <span>Classifier</span></div>'
-    '<div class="subtitle">Upload a photo and a CNN will tell you what it sees.</div>'
-    '<div class="tags"><span class="tag">MobileNetV3</span><span class="tag">PyTorch</span>'
-    '<span class="tag">ImageNet · 1000 classes</span></div>',
+    '<div class="sub">Drop in a photo. Get the top 5 guesses from 1000 classes.</div></div>',
     unsafe_allow_html=True,
 )
 
-left, right = st.columns(2, gap="large")
+left, right = st.columns(2, gap="medium")
 
-with left:
+with left, st.container(key="input_card"):
+    st.markdown('<div class="card-title">Image</div>', unsafe_allow_html=True)
     source = st.segmented_control("Input", ["Upload", "Sample", "Camera"], default="Upload",
                                   label_visibility="collapsed")
     image = None
     if source == "Upload":
-        file = st.file_uploader("Image", type=["jpg", "jpeg", "png"], label_visibility="collapsed")
+        file = st.file_uploader("Image file", type=["jpg", "jpeg", "png"], label_visibility="collapsed")
         if file:
             image = Image.open(file).convert("RGB")
     elif source == "Sample":
         samples = sorted(SAMPLES_DIR.glob("*.jpg"))
-        choice = st.selectbox("Sample", samples, format_func=lambda p: p.stem.title(),
+        choice = st.selectbox("Sample image", samples, format_func=lambda p: p.stem.title(),
                               label_visibility="collapsed")
         image = Image.open(choice).convert("RGB")
     elif source == "Camera":
@@ -146,11 +156,14 @@ with left:
     if image is not None:
         st.image(image, width="stretch")
 
-with right:
+with right, st.container(key="result_card"):
+    st.markdown('<div class="card-title">Result</div>', unsafe_allow_html=True)
     if image is not None:
         with st.spinner("Classifying..."):
             results, elapsed_ms = predict(image)
-        st.markdown(result_card(results, elapsed_ms), unsafe_allow_html=True)
+        st.markdown(result_html(results, elapsed_ms), unsafe_allow_html=True)
     else:
-        st.markdown('<div class="empty"><div>🖼️</div>Your result will show up here</div>',
+        st.markdown('<div class="empty"><div class="icon">🖼️</div>Add an image to see the prediction</div>',
                     unsafe_allow_html=True)
+
+st.markdown('<div class="foot">PyTorch · Streamlit · Built by Vishnu</div>', unsafe_allow_html=True)
