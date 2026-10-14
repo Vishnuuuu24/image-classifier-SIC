@@ -3,4 +3,3 @@ torch
 torchvision
 streamlit
 pillow
-pandas
